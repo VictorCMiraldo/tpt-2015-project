@@ -4,6 +4,7 @@ open import Repo.Data.PMap FileId as FileMap
   using (_∈_; isFactor; factorₗ; factorᵣ) renaming (lkup' to fetch)
 
 open import Repo.Data.List1
+open import Data.List.Any as A using ()
 
 module Repo.Models.Abs1 where
   
@@ -99,6 +100,18 @@ module Repo.Models.Abs1 where
   [_] : Command → Command*
   [ c ] = c ∷ []
 
+  -- Let's then create a simplistic command apply function.
+  -- Our function will check no pre-conditions whatsoever.
+  apply : Command → 𝑴 → 𝑴
+  apply (add x)       = FileMap.insert x []
+  apply (rmv x)       = FileMap.delete x
+  apply (upd x x₁ x₂) = FileMap.alter (const (just x₂)) x
+
+  -- Ofc, we need a list extension.
+  apply* : Command* → 𝑴 → 𝑴
+  apply* []      = id
+  apply* (h ∷ t) = apply* t ∘ apply h
+
   data _<_>_ : M-sl → Command* → M-sl → Set where
     r-add : ∀{f} →    Empty    < [ add f     ] > Has f [] 
     r-rmv : ∀{f} →    Has f [] < [ rmv f     ] > Empty
@@ -114,6 +127,9 @@ module Repo.Models.Abs1 where
 
   -- Now we can start to prove that we can consider
   -- other derivable rules in our system!
+  -- 
+  -- This is a much more useful version of r-add. Where
+  -- our repository doesn't need to contain a single file.
   add-frame : ∀{f r} 
             → (Empty < [ add f ] > Has f [])
             → f ∉l list (addr r)
@@ -121,3 +137,25 @@ module Repo.Models.Abs1 where
   add-frame {f = f} {r = r} r-add hip
     = r-frame r-add (∩-tail {R = nil1} hip)
   add-frame (r-seq hip ())
+
+  -- Yet, the interesting part is to prove that our
+  -- implementation of 𝑴, that is, a FileMap managed
+  -- according to apply, is sound!
+
+  private
+    map≡[]→m≡[] : ∀{a b}{A : Set a}{B : Set b}{l : List A}{f : A → B}
+                → map f l ≡ [] → l ≡ []
+    map≡[]→m≡[] {l = []} _ = refl
+    map≡[]→m≡[] {l = x ∷ l} ()
+  
+  soundness : {m : 𝑴}{P Q : M-sl}{patch : Command*}
+            → m ⊨ P → P < patch > Q → apply* patch m ⊨ Q
+  soundness (Empty x) r-add
+    rewrite (map≡[]→m≡[] x) = Has (A.here refl) refl
+  soundness (Has (A.here px) x₁) r-rmv = {!!}
+  soundness (Has (A.there prf) x₁) r-rmv = {!!}
+  soundness (Has (A.here refl) refl) r-upd 
+    = Has (A.here ?) {!!}
+  soundness (Has (A.there prf) x₁) r-upd = {!!}
+  soundness pre (r-seq hip hip₁) = {!!}
+  soundness pre (r-frame hip x) = {!!}
