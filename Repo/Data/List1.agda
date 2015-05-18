@@ -15,30 +15,14 @@ module Repo.Data.List1 where
 
   -- A membership notion is paramount...
   -- We also stabilish a few other equivalent formulations.
-  _∈l_ : {A : Set}{{eq : Eq A}}
-      → A → List A → Set _
-  _∈l_ {{eq _≟_}} a m = A.Any (dec2set ∘ (_≟_ a)) m
-
-  Any2∈l : {A : Set}{{eq : Eq A}}
-         → (a : A)(as : List A) → A.Any (_≡_ a) as → a ∈l as
-  Any2∈l {{eq _≟_}} a ._ (A.here {x} px) 
-    with a ≟ x | inspect (_≟_ a) x
-  ...| yes a≡x | [ j ] = A.here (subst dec2set (sym j) unit)
-  ...| no  a≢x | [ j ] = ⊥-elim (a≢x px)
-  Any2∈l a .(_ ∷ xs) (A.there {xs = xs} k) = A.there (Any2∈l a xs k)
-
-  ∈l2Any : {A : Set}{{eq : Eq A}}{a : A}{as : List A}
-         → a ∈l as → A.Any (_≡_ a) as
-  ∈l2Any {{eq _≟_}} {a = a} (A.here {x} px) with a ≟ x
-  ...| yes a≡x = A.here a≡x
-  ∈l2Any {A} {{eq _≟_}} (A.here ()) | no a≢x
-  ∈l2Any (A.there hip) = A.there (∈l2Any hip)
+  _∈l_ : {A : Set} → A → List A → Set _
+  _∈l_ a m = A.Any (_≡_ a) m
 
   _∉l_ : {A : Set}{{eq : Eq A}}
       → A → List A → Set _
   a ∉l m = (a ∈l m) → ⊥
   
-  -- no duplicates modulo f predicate
+  -- no duplicates, modulo f, predicate
   noDups-mod : {A B : Set}{{eq : Eq B}} → (A → B) → List A → Set
   noDups-mod _ [] = Unit
   noDups-mod f (x ∷ l) = f x ∉l (map f l) × noDups-mod f l
@@ -77,7 +61,7 @@ module Repo.Data.List1 where
             → (a : A)(l : List1 A) → List1 A
   cons1-dup {{eq _≟_}} a (as , pas) with A.any (_≟_ a) as
   ...| yes _    = (as , pas)
-  ...| no  a∉as = cons1 {{eq _≟_}} a (as , pas) (a∉as ∘ ∈l2Any {{eq _≟_}})
+  ...| no  a∉as = cons1 {{eq _≟_}} a (as , pas) (a∉as)
 
   nub : {A : Set}{{eq : Eq A}} → List A → List1 A
   nub [] = nil1
@@ -100,7 +84,7 @@ module Repo.Data.List1 where
     with A.any (_≟_ a) rs 
   ...| yes a∈R = refl
   ...| no  a∉R with A.any (_≟_ a) ss
-  ...| yes a∈S = ⊥-elim (hip (Any2∈l {{eq _≟_}} a ss a∈S))
+  ...| yes a∈S = ⊥-elim (hip a∈S)
   ...| no  a∉S = refl
 
   -- Intersection of normal lists
