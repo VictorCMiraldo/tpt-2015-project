@@ -121,9 +121,9 @@ module Repo.Models.Abs1 where
           → q <    d    > r
           → p < (c ∷ d) > r
     r-frame : ∀{p q r c} 
-            → p < c > q 
-            → mod c ∩ addr r ≡ nil1
-            → Frame p r < c > Frame q r
+            → p < [ c ] > q 
+            → mod-c c ∩ addr r ≡ nil1
+            → Frame p r < [ c ] > Frame q r
 
   -- Now we can start to prove that we can consider
   -- other derivable rules in our system!
@@ -147,15 +147,25 @@ module Repo.Models.Abs1 where
                 → map f l ≡ [] → l ≡ []
     map≡[]→m≡[] {l = []} _ = refl
     map≡[]→m≡[] {l = x ∷ l} ()
+
+  mutual
+    seq-sound : {m : 𝑴}{P Q Q' : M-sl}{c : Command}{cs : Command*}
+              → m ⊨ P
+              → Q <  cs   > Q'
+              → P < [ c ] > Q
+              → (apply* cs (apply c m)) ⊨ Q'
+    seq-sound {cs = []} pre h hs = soundness pre (r-seq hs h)
+    seq-sound {cs = ._ ∷ .[]} pre r-add hs = {!!}
+    seq-sound {cs = ._ ∷ .[]} pre r-rmv hs = {!!}
+    seq-sound {cs = ._ ∷ .[]} pre r-upd hs = {!!}
+    seq-sound {cs = x ∷ cs} pre (r-seq h h₁) hs = {!!}
+    seq-sound {cs = x ∷ .[]} pre (r-frame h x₁) hs = {!!}
   
-  soundness : {m : 𝑴}{P Q : M-sl}{patch : Command*}
-            → m ⊨ P → P < patch > Q → apply* patch m ⊨ Q
-  soundness (Empty x) r-add
-    rewrite (map≡[]→m≡[] x) = Has (A.here refl) refl
-  soundness (Has (A.here px) x₁) r-rmv = {!!}
-  soundness (Has (A.there prf) x₁) r-rmv = {!!}
-  soundness (Has (A.here refl) refl) r-upd 
-    = Has (A.here ?) {!!}
-  soundness (Has (A.there prf) x₁) r-upd = {!!}
-  soundness pre (r-seq hip hip₁) = {!!}
-  soundness pre (r-frame hip x) = {!!}
+    soundness : {m : 𝑴}{P Q : M-sl}{patch : Command*}
+              → m ⊨ P → P < patch > Q → apply* patch m ⊨ Q
+    soundness (Empty x) r-add
+      rewrite (map≡[]→m≡[] x) = Has (A.here refl) refl
+    soundness pre r-rmv = {!!}
+    soundness pre r-upd = {!!} 
+    soundness {patch = c ∷ cs} pre (r-seq h hs) = {!!}
+    soundness pre (r-frame h x) = {!!}

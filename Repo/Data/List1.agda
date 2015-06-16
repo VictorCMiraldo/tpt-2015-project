@@ -55,6 +55,10 @@ module Repo.Data.List1 where
   cons1 a (as , as-nodup) p 
     = a ∷ as , noDups⇒noDups-mod-id p , as-nodup
 
+  -- Singleton list
+  [_]₁ : {A : Set}{{eq : Eq A}} → A → List1 A
+  [ a ]₁ = cons1 a nil1 (λ ())
+
   -- Or, we check whether or not the new element is in the list,
   -- and then add it, if it's not there.
   cons1-dup : {A : Set}{{eq : Eq A}}
@@ -62,6 +66,16 @@ module Repo.Data.List1 where
   cons1-dup {{eq _≟_}} a (as , pas) with A.any (_≟_ a) as
   ...| yes _    = (as , pas)
   ...| no  a∉as = cons1 {{eq _≟_}} a (as , pas) (a∉as)
+
+  -- We can also apply our "modulo function" and still maintain noDups.
+  noDups-app : {A B : Set}{{eq : Eq B}}{l : List A}(f : A → B) 
+             → noDups-mod f l
+             → Σ (List1 B) (_≡_ (map f l) ∘ list)
+  noDups-app {l = []} f hip = ([] , unit) , refl
+  noDups-app {l = x ∷ l} f hip with noDups-app {l = l} f (p2 hip)
+  ...| ([] , rp) , k = (cons1 (f x) ([] , unit) (λ ())) , cong (_∷_ (f x)) k
+  ...| (r ∷ rs , p , prf) , k 
+     rewrite k = cons1 (f x) (r ∷ rs , p , prf) (p1 hip) , cong (_∷_ (f x)) refl
 
   nub : {A : Set}{{eq : Eq A}} → List A → List1 A
   nub [] = nil1

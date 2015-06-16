@@ -1,13 +1,17 @@
 Prelude
 =======
 
-Repo to keep track of our TPT-2015 project, at Utrecht University.
+Repo to keep track of my TPT-2015 project, at Utrecht University.
 
-Options
-=======
+Task
+====
 
-The following topics are annotated with a difficulty lvl, from 1 (being trivial) to 10 (being impossible)
+The project consists of an exploration of different separation semantics
+in Agda.
 
-- Prove Natural Deduction Normalization Theorem in Agda (5).
-- Prove Gödel's Incompletness in Agda (8?).
-  - Somebody already [did in Coq](http://r6.ca/Goedel/goedel1.html) 
+Typechecking
+============
+
+In order to typecheck the modules, please copy the file `Repo/Prelude.agda.bckp` to `Repo/Prelude.agda` and make sure you have the current directory in the 
+search path. This is named with a `bckp` because I already have my prelude
+in my standard library, so Agda does not complain about clashing modules.
