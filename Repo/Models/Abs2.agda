@@ -4,7 +4,8 @@ open import Repo.Definitions
 open Eq {{...}}
 
 open import Repo.Data.PMap1 FileId as FileMap 
-  using (dom; lkup; disjoint; union; empty)
+  using (dom; lkup; empty; _≈_; ≈-trans;  _∉_; lkup⇒∈)
+open import Repo.Data.PMap1.Union FileId
 
 open import Repo.Data.List1
 open import Data.List.Any as Any using ()
@@ -65,9 +66,10 @@ module Repo.Models.Abs2 where
   --
   data Logic : Set where
     -- Repo-specific reasoning.
-    Empty : Logic
+    Hasnt : FileId → Logic
+    
     Has   : FileId → ℕ → Logic
-    -- Has-≤ : FileId → ℕ → Logic
+
     _is_  : Line → Bit* → Logic
 
     -- Separation Constructs.
@@ -84,8 +86,9 @@ module Repo.Models.Abs2 where
   --
   data _⊨_ (m : 𝑴) : Logic → Set where
     -- A repository is empty when it has no files
-    V-Empty : dom (files m) ≡ ([] , unit)
-            → m ⊨ Empty
+    V-Hasnt : ∀{f} 
+            → f ∉ files m
+            → m ⊨ Hasnt f
     
     {-
     -- A repository has a given file if looking up how many lines it
@@ -109,7 +112,7 @@ module Repo.Models.Abs2 where
     -- A separation statement occurs at the file lvl.
     V-★ : {p q : Logic}{n₁ n₂ : FileMap.to1 ℕ}
         → (disj : disjoint {{eqA = eq-ℕ}} (n₁ , n₂))
-        → files m ≡ union n₁ n₂ disj
+        → files m ≈ union n₁ n₂ disj
         → (n₁ , content m) ⊨ p
         → (n₂ , content m) ⊨ q
         → m ⊨ (p ★ q)
@@ -133,7 +136,7 @@ module Repo.Models.Abs2 where
   -- Given a formula and an address, does this formula references
   -- this specific address?
   addr : Logic → Line → Set
-  addr Empty l     = ⊥
+  addr (Hasnt _) l     = ⊥
   addr (Has x n) (f , fn) with x ≟-ℕ f
   ...| yes _ = fn ≤ n
   ...| no  _ = ⊥
@@ -143,6 +146,14 @@ module Repo.Models.Abs2 where
 
   not-addr : Logic → Line → Set
   not-addr R l = addr R l → ⊥
+
+  -- An address function is a good idea too!
+  addr-f : Logic → List1 FileId
+  addr-f (Hasnt x) = [ x ]₁
+  addr-f (Has x x₁) = [ x ]₁
+  addr-f (x is x₁) = [ p1 x ]₁
+  addr-f (P ★ P₁) = addr-f P ∪ addr-f P₁
+  addr-f (P ∧ P₁) = addr-f P ∪ addr-f P₁
 
   -----------------------------
   -- Command language
@@ -223,12 +234,68 @@ module Repo.Models.Abs2 where
   isFrame R c with mod c
   ...| l , _ = All.All (not-addr R) l
 
+  -- Some auxiliar lemmas
+  lemma-∩ : {A : Set}{{eqA : Eq A}}{P Q : List1 A}{x : A} 
+          → P ∩ Q ≡ ([] , unit) → x ∈l list P → x ∉l list Q
+  lemma-∩ hip x∈P = {!!}
+
+  lemma-∩-∪-1 : {A : Set}{{eqA : Eq A}}{P Q R : List1 A}{x : A} 
+              → (P ∪ R) ∩ Q ≡ ([] , unit)
+              → P ∩ Q ≡ ([] , unit)
+  lemma-∩-∪-1 hip = {!!}
+
+  lemma-∩-∪-2 : {A : Set}{{eqA : Eq A}}{P Q R : List1 A}{x : A} 
+              → (R ∪ P) ∩ Q ≡ ([] , unit)
+              → P ∩ Q ≡ ([] , unit)
+  lemma-∩-∪-2 hip = {!!}
+
+  lemma-dom-lift : {m : FileMap.to1 ℕ}{x : FileId}
+                 → x ∉l list (dom m)
+                 → x ∉ m
+  lemma-dom-lift = {!!} 
+
+
+  -- The (Empty : Logic) represents a problem for this augment!
+  -- We should have other means of refering to empty repositories.
+  -- For instance, for adding files, we could require a "not have f" instead
+  -- of requiring it to be empty! I mean, we know how to add files to non-empty folders.
+  augment : {P : Logic}{c : Line → Maybe Bit*}
+            (m m' : FileMap.to1 ℕ)(disj : disjoint {{eq-ℕ}} (m , m'))
+          → addr-f P ∩ dom m' ≡ ([] , unit)
+          → (m , c) ⊨ P
+          → (union m m' disj , c) ⊨ P
+  augment {P = Hasnt x} m m' disj Phip (V-Hasnt hip) 
+    with ¬union-uni x disj hip (lemma-dom-lift (lemma-∩ Phip (Any.here refl)))
+  ...| r = V-Hasnt r
+  augment {Has x x₁} m m' disj Phip (V-Has f fn) 
+    = V-Has (trans (union-lkup-1 disj x (lkup⇒∈ m x f)) f) fn
+  augment {._ is x₁} m m' disj Phip (V-Is x) 
+    = V-Is x
+  augment {P ★ P₁} m m' disj Phip (V-★ {n₁ = n₁} {n₂} disj₁ x hip hip₁) 
+    = let dn2m' = (union-disjoint-2 n₁ n₂ m' disj₁ (disjoint-lift m m' (union n₁ n₂ disj₁) disj x))
+          dn1m' = (union-disjoint-1 n₁ n₂ m' disj₁ (disjoint-lift m m' (union n₁ n₂ disj₁) disj x))
+      in V-★ lemma 
+             (≈-trans x (sym (union-assoc disj₁ dn2m' dn1m'))) 
+             hip 
+             (augment n₂ m' dn2m' (lemma-∩-∪-2 {Q = dom m'} Phip) hip₁)
+    where
+      lemma : disjoint (n₁ , union n₂ m' _)
+      lemma = {!!}
+  augment {P ∧ P₁} m m' disj Phip (V-∧ hip hip₁) 
+    = V-∧ (augment m m' disj (lemma-∩-∪-1 Phip) hip) 
+          (augment m m' disj (lemma-∩-∪-2 Phip) hip₁)
+
+  -- And, ofc, isomorphic maps satisfy the same formulas.
+  ⊨-≈ : {P : Logic}{m₁ m₂ : FileMap.to1 ℕ}{c : Line → Maybe Bit*}
+      → m₁ ≈ m₂ → (m₁ , c) ⊨ P → (m₂ , c) ⊨ P
+  ⊨-≈ = {!!}
+
   data Patch : Logic → Command → Logic → Set where
     P-touch : ∀{f}
-            → Patch Empty (touch f) (Has f 0)
+            → Patch (Hasnt f) (touch f) (Has f 0)
 
     P-rmfile : ∀{f}
-             → Patch (Has f 0) (rmfile f) Empty
+             → Patch (Has f 0) (rmfile f) (Hasnt f)
     
     P-insert : ∀{f n bs}
              → Patch (Has f n) 
@@ -245,16 +312,22 @@ module Repo.Models.Abs2 where
           → Patch S d Q
           → Patch P (c ▸ d) Q
 
-    P-frame : ∀{P Q R c}
-            → Patch P c Q
-            → isFrame R c
-            → Patch (P ★ R) c (Q ★ R)
+    P-frame-1 : ∀{P Q R c}
+              → Patch P c Q
+              → isFrame R c
+              → Patch (P ★ R) c (Q ★ R)
+
+    P-frame-2 : ∀{P Q R c}
+              → Patch P c Q
+              → isFrame R c
+              → Patch (R ★ P) c (R ★ Q)
 
     -- I hope this makes sense... some soundness proof for this rule
     -- only would be desired. The others are more or less standard.
     --
     -- TOTHINK2: if I can prove that for R and c such that (isFrame R c)
     --           P ★ R ⇒ P , precondition-strengthtening saves me.
+    {-
     P-frame-pre-elim-1 : ∀{P Q R c}
                        → Patch (P ★ R) c Q
                        → isFrame R c
@@ -271,7 +344,8 @@ module Repo.Models.Abs2 where
     P-post-and : ∀{P Q Q' c}
                → Patch P c Q
                → Patch P c Q'
-               → Patch P c (Q ∧ Q')
+                 → Patch P c (Q ∧ Q')
+    -}
 
     P-pre-str : ∀{P P' Q c}
               → P ⇒ P'
@@ -293,7 +367,7 @@ module Repo.Models.Abs2 where
   ------------------------------
   -- Test case 1: Independent Patches
 
-  patch1 : Patch Empty (touch 0) (Has 0 0)
+  patch1 : Patch (Hasnt 0) (touch 0) (Has 0 0)
   patch1 = P-touch
 
   mystring1 : List Bit
@@ -321,36 +395,45 @@ module Repo.Models.Abs2 where
         ▸ touch (F 1)
         ▸ replace (init {0}) mystring []
 
+  -- Here we see we need to set up a different notion of equality too!
+  -- Assuming (a b : to1 B) s.t. disjoint (a , b),
+  -- we have: (a ∪ b) = (a ++ b) ≢ (b ++ a) = (b ∪ a)
+  --
+  -- our equality must not rely on order!
+  --
   ★-comm : {R S : Logic} → R ★ S ⇒ S ★ R
-  ★-comm {R} {S} mim hip = {!!}
+  ★-comm mim (V-★ disj x hip hip₁) = V-★ (disjoint-comm disj) (trans x (union-comm disj)) hip₁ hip
 
   Hasn+1⇒Hasn : ∀{f n} → Has f (suc n) ⇒ Has f n
-  Hasn+1⇒Hasn mim hip = {!!}
+  Hasn+1⇒Hasn mim (V-Has x x₁) = V-Has x (dec-leq x₁)
+    where   
+      dec-leq : ∀{m n} → suc n ≤ m → n ≤ m
+      dec-leq {zero} ()
+      dec-leq {suc m} {zero}  hip = Data.Nat.z≤n
+      dec-leq {suc m} {suc n} (Data.Nat.s≤s hip) = Data.Nat.s≤s (dec-leq hip)
 
   ∧-imp : ∀{P P' Q} → P ⇒ P' → P ∧ Q ⇒ P' ∧ Q
-  ∧-imp hip1 mim hip = {!!}
+  ∧-imp hip1 mim (V-∧ hip hip₁) = V-∧ (hip1 mim hip) hip₁
 
   ∧-elim2 : ∀{P Q} → P ∧ Q ⇒ Q
-  ∧-elim2 mim hip = {!!}
+  ∧-elim2 mim (V-∧ hip hip₁) = hip₁
+
+  ∧-elim1 : ∀{P Q} → P ∧ Q ⇒ P
+  ∧-elim1 mim (V-∧ hip hip₁) = hip
+
+  experiment-1 : ∀{P R} → P ★ R ⇒ P
+  experiment-1 mim (V-★ {n₁ = n1} {n₂ = n2} disj x hip hip₁) 
+    = ⊨-≈ (sym x) (augment n1 n2 disj {!!} hip)
 
   -- Looks like pre-condition strenghtening and postcondition weakening
   -- is the easier way to manipulate contexts...
   -- 
   -- That was already expected, I mean, this is by far the most important
   -- rule of Hoare calculus... idk why I didn't consider this before.
-  proof : Patch Empty repo1 (((F 0 , 0) is []) ★ Has (F 1) 0)
+  proof : Patch (Hasnt 0 ★ Hasnt 1) repo1 (((F 0 , 0) is []) ★ Has (F 1) 0)
   proof 
-    = P-seq 
-        P-touch
-        (P-seq 
-          P-insert 
-          (P-seq (P-frame-pre-elim-1 
-                    (P-pre-str ★-comm (P-frame P-touch 
-                      ((either id (λ ())) All.∷ All.[]))) 
-                 ((λ x → x) All.∷ All.[])) 
-             (P-pre-str ★-comm 
-               (P-frame 
-                 (P-pre-str (∧-imp Hasn+1⇒Hasn) 
-                    (P-post-wk ∧-elim2 P-replace)) 
-               (id All.∷ All.[]))) ))      
+    = P-seq (P-frame-1 P-touch ((λ x → x) All.∷ All.[])) 
+      (P-seq (P-frame-1 P-insert ((λ z → z) All.∷ All.[])) 
+      (P-seq (P-frame-2 P-touch ((either (λ x → x) (λ ())) All.∷ All.[])) 
+      (P-frame-1 (P-pre-str (∧-imp Hasn+1⇒Hasn) (P-post-wk ∧-elim2 P-replace)) (id All.∷ All.[])) ))  
         

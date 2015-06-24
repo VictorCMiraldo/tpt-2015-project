@@ -54,8 +54,57 @@ module Repo.Data.PMap1 (A : Set){{eqA : Eq A}} where
   ...| yes _ = just (p2 x)
   ...| no  _ = lkup k (m , p2 prf)
 
+  -- Flipping lkup arguments is very usefull to complete some
+  -- proofs.
   lift : {B : Set} → to1 B → A → Maybe B
-  lift m a = lkup a m
+  lift m a = lkup a m  
+
+  -- A useful lemma for us to understand when lookup fails.
+  lkup-fails : {B : Set}{m : to1 B}(x : A) → x ∉ m → lkup x m ≡ nothing
+  lkup-fails {m = ([] , unit)} x x∉m = refl
+  lkup-fails {m = ((k , v) ∷ m , p , prf)} x x∉m
+    with x ≟ k
+  ...| yes x≡k = ⊥-elim (x∉m (here x≡k))
+  ...| no  x≢k = lkup-fails {m = (m , prf)} x (x∉m ∘ there)
+
+  -- obviously, the converse also holds!
+  lkup⇒∈ : {B : Set}{b : B}(m : to1 B)(x : A) 
+         → lkup x m ≡ just b
+         → x ∈ m
+  lkup⇒∈ ([] , unit) x ()
+  lkup⇒∈ ((k , v) ∷ m , p , prf) x hip
+    with x ≟ k
+  ...| yes x≡k = here x≡k
+  ...| no  x≢k = there (lkup⇒∈ (m , prf) x hip)
+
+  
+  -- After defining a lifting function,
+  -- we can define a weaker notion of equality, where the order
+  -- in which elements are stored does not matter.
+  _≈_ : {B : Set} → to1 B → to1 B → Set
+  m₁ ≈ m₂ = lift m₁ ≡ lift m₂
+
+  ≈-trans : {B : Set}{m₁ m₂ m₃ : to1 B}
+          → m₁ ≈ m₂ → m₂ ≈ m₃ → m₁ ≈ m₃
+  ≈-trans a1 a2 = trans a1 a2
+
+  -- and, well... to prove liftings are propositonally equal
+  -- we need function extentionality.
+  postulate
+    fun-ext : {A B : Set}{f g : A → B}
+            → (∀ x → f x ≡ g x)
+            → f ≡ g
+
+  fun-ext-rev : {A B : Set}{f g : A → B}
+              → f ≡ g
+              → (∀ x → f x ≡ g x)
+  fun-ext-rev refl = λ _ → refl
+
+  -- A corectness of lift is trivial to obtain.
+  lift-≡-lkup : {B : Set}{m₁ m₂ : to1 B}{a : A}
+              → lift m₁ ≡ lift m₂
+              → lkup a m₁ ≡ lkup a m₂
+  lift-≡-lkup {a = a} hip = (fun-ext-rev hip) a
 
   lift-prf : {B : Set}(m : to1 B)(a : A) → Maybe (B × a ∈ m)
   lift-prf ([] , unit) a = nothing
@@ -66,6 +115,11 @@ module Repo.Data.PMap1 (A : Set){{eqA : Eq A}} where
   lkup-total : {B : Set}(a : A)(m : to1 B) → a ∈ m → B
   lkup-total k (m ∷ _ , _)    (here _)  = p2 m
   lkup-total k (_ ∷ ms , prf) (there x) = lkup-total k (ms , p2 prf) x
+
+  lift-prf-full : {B : Set}(m : to1 B)(a : A) → (B × a ∈ m) ⊎ (a ∉ m)
+  lift-prf-full m a with elem a m
+  ...| yes a∈m = i1 (lkup-total a m a∈m , a∈m)
+  ...| no  a∉m = i2 a∉m
 
   dom : {B : Set} → to1 B → List1 A
   dom m = p1 (noDups-app p1 (p2 m))
@@ -80,33 +134,32 @@ module Repo.Data.PMap1 (A : Set){{eqA : Eq A}} where
   -- Auxiliary Formulations of Properties --
   ------------------------------------------
 
-  private
-    any-map-commute-1 : {A B : Set}{l : List A}{f : A → B}{P : B → Set}
-                      → Any (P ∘ f) l → Any P (Prelude.map f l)
-    any-map-commute-1 (here px) = here px
-    any-map-commute-1 (there hip) = there (any-map-commute-1 hip)
+  any-map-commute-1 : {A B : Set}{l : List A}{f : A → B}{P : B → Set}
+                    → Any (P ∘ f) l → Any P (Prelude.map f l)
+  any-map-commute-1 (here px) = here px
+  any-map-commute-1 (there hip) = there (any-map-commute-1 hip)
 
-    any-map-commute-2 : {A B : Set}{l : List A}{f : A → B}{P : B → Set}
-                      → Any P (Prelude.map f l) → Any (P ∘ f) l
-    any-map-commute-2 {l = []} ()
-    any-map-commute-2 {l = x ∷ l} (here px) = here px
-    any-map-commute-2 {l = x ∷ l} (there hip) = there (any-map-commute-2 hip)
+  any-map-commute-2 : {A B : Set}{l : List A}{f : A → B}{P : B → Set}
+                    → Any P (Prelude.map f l) → Any (P ∘ f) l
+  any-map-commute-2 {l = []} ()
+  any-map-commute-2 {l = x ∷ l} (here px) = here px
+  any-map-commute-2 {l = x ∷ l} (there hip) = there (any-map-commute-2 hip)
 
-    ∈→∈l : {B : Set}{a : A}{m : to1 B}
-         → a ∈ m → a ∈l Prelude.map p1 (p1 m)
-    ∈→∈l = any-map-commute-1
+  ∈→∈l : {B : Set}{a : A}{m : to1 B}
+       → a ∈ m → a ∈l Prelude.map p1 (p1 m)
+  ∈→∈l = any-map-commute-1
 
-    ∈l→∈ : {B : Set}{a : A}{m : to1 B}
-         → a ∈l Prelude.map p1 (p1 m) → a ∈ m 
-    ∈l→∈ = any-map-commute-2
+  ∈l→∈ : {B : Set}{a : A}{m : to1 B}
+       → a ∈l Prelude.map p1 (p1 m) → a ∈ m 
+  ∈l→∈ = any-map-commute-2
 
-    ∉→∉l : {B : Set}{a : A}{m : to1 B}
-         → a ∉ m → a ∉l Prelude.map p1 (p1 m)
-    ∉→∉l hip = hip ∘ any-map-commute-2
+  ∉→∉l : {B : Set}{a : A}{m : to1 B}
+       → a ∉ m → a ∉l Prelude.map p1 (p1 m)
+  ∉→∉l hip = hip ∘ any-map-commute-2
 
-    ∉l→∉ : {B : Set}{a : A}{m : to1 B}
-         → a ∉l Prelude.map p1 (p1 m) → a ∉ m
-    ∉l→∉ hip = hip ∘ any-map-commute-1
+  ∉l→∉ : {B : Set}{a : A}{m : to1 B}
+       → a ∉l Prelude.map p1 (p1 m) → a ∉ m
+  ∉l→∉ hip = hip ∘ any-map-commute-1
 
   add-with-prf : {B : Set}(a : A)(b : B)(m : to1 B)
                → a ∉ m → to1 B
@@ -215,145 +268,4 @@ module Repo.Data.PMap1 (A : Set){{eqA : Eq A}} where
         lemma (_ ∷ m) (there hip) = there (lemma m hip)
         lemma []      (there ())
 
-  -------------------
-  -- Disjoint Maps --
-  -------------------
 
-  disjoint : {B : Set} → to1 B × to1 B → Set
-  disjoint (([] , unit)             , n) 
-    = Unit
-  disjoint (((x , v) ∷ m , p , prf) , n)
-    = x ∉ n × disjoint ((m , prf) , n)
-
-  disjoint-choose-2 : {B : Set}{m₁ m₂ : to1 B}{a : A} → disjoint (m₁ , m₂)
-                      → a ∈ m₂ → a ∉ m₁
-  disjoint-choose-2 {m₁ = [] , unit} hip a∈m₂ ()
-  disjoint-choose-2 {m₁ = (x , v) ∷ m₁ , p , prf} hip a∈m₂ (here refl)   = p1 hip a∈m₂
-  disjoint-choose-2 {m₁ = (x , v) ∷ m₁ , p , prf} hip a∈m₂ (there a∈m₁) = disjoint-choose-2 (p2 hip) a∈m₂ a∈m₁
-
-  disjoint-comm : {B : Set}{m₁ m₂ : to1 B} → disjoint (m₁ , m₂) → disjoint (m₂ , m₁)
-  disjoint-comm {m₂ = [] , unit} disj               
-    = unit
-  disjoint-comm {m₁ = [] , unit}                  {m₂ = ((x , v) ∷ m₂ , p2 , prf2)} disj 
-    = (λ ()) , (disjoint-comm unit)
-  disjoint-comm {m₁ = ((y , t) ∷ m₁ , p , prf1)} {m₂ = ((x , v) ∷ m₂ , _ , prf2)} (y∉xm2 , disj) 
-    = disjoint-choose-2 {m₁ = (y , t) ∷ m₁ , p , prf1} (y∉xm2 , disj) (here refl) 
-    , disjoint-comm (y∉xm2 ∘ there , disjoint-comm (p2 (disjoint-comm disj)))
-
-  disjoint-choose-1 : {B : Set}{m₁ m₂ : to1 B}{a : A} → disjoint (m₁ , m₂)
-                    → a ∈ m₁ → a ∉ m₂
-  disjoint-choose-1 hip a∈m₁ a∈m₂ = disjoint-choose-2 (disjoint-comm hip) a∈m₁ a∈m₂
-
-  -----------
-  -- Union --
-  -----------
-  
-  mutual
-    union : {B : Set} → (m₁ m₂ : to1 B) → disjoint (m₁ , m₂) → to1 B
-    union ([] , unit)             m₂ hip = m₂
-    union ((x , v) ∷ m , p , prf) m₂ hip 
-      = add-with-prf x v (union (m , prf) m₂ (p2 hip)) 
-                         (¬union-uni x (p2 hip) (∉l→∉ {m = m , prf} p) (p1 hip))
-
-    union-uni : {B : Set}{m₁ m₂ : to1 B}(a : A)(hip : disjoint (m₁ , m₂))
-              → a ∈ union m₁ m₂ hip → (a ∈ m₁) ⊎ (a ∈ m₂)
-    union-uni {m₁ = ([] , unit)}             a hip a∈mm = i2 a∈mm
-    union-uni {m₁ = ((x , v) ∷ m , p , prf)} a hip a∈mm 
-      with x ≟ a
-    ...| yes x≡a = i1 (here (sym x≡a))
-    ...| no  x≢a with union-uni a (p2 hip) (tail (x≢a ∘ sym) a∈mm)
-    ...| i1 r = i1 (there r)
-    ...| i2 r = i2 r
-
-    ¬union-uni : {B : Set}{m₁ m₂ : to1 B}(a : A)(hip : disjoint (m₁ , m₂))
-              → a ∉ m₁ → a ∉ m₂ → a ∉ union m₁ m₂ hip
-    ¬union-uni a hip a∉m₁ a∉m₂ abs with union-uni a hip abs
-    ...| i1 a∈m₁ = a∉m₁ a∈m₁
-    ...| i2 a∈m₂ = a∉m₂ a∈m₂
-
-  ¬union-uni-2 : {B : Set}{m₁ m₂ : to1 B}(a : A)(hip : disjoint (m₁ , m₂))
-               → a ∉ union m₁ m₂ hip → (a ∉ m₁) × (a ∉ m₂)
-  ¬union-uni-2 {m₁ = ([] , unit)} a hip a∈mm = (λ ()) , a∈mm
-  ¬union-uni-2 {m₁ = ((x , v) ∷ m₁ , p , prf)} a hip a∈mm 
-    with x ≟ a
-  ...| yes x≡a = ⊥-elim (a∈mm (here (sym x≡a)))
-  ...| no  x≢a with ¬union-uni-2 a (p2 hip) (a∈mm ∘ there)
-  ...| r1 , r2 = r1 ∘ tail (x≢a ∘ sym) , r2
-
-  union-ext-2 : {B : Set}{a : A}{m₁ m₂ : to1 B}(hip : disjoint (m₁ , m₂))
-              → a ∈ m₂ → a ∈ union m₁ m₂ hip
-  union-ext-2 {m₁ = [] , unit} disj a∈m2 = a∈m2
-  union-ext-2 {a = a} {m₁ = (x , v) ∷ m , p , prf} disj a∈m2
-    with x ≟ a
-  ...| yes a≡x rewrite a≡x = ⊥-elim (p1 disj a∈m2)
-  ...| no  a≢x = there (union-ext-2 (p2 disj) a∈m2)
-
-  ¬union-ext-2 : {B : Set}{a : A}{m₁ m₂ : to1 B}(hip : disjoint (m₁ , m₂))
-              → a ∈ m₂ → a ∈ union m₁ m₂ hip
-  ¬union-ext-2 {m₁ = [] , unit} disj a∈m2 = a∈m2
-  ¬union-ext-2 {a = a} {m₁ = (x , v) ∷ m , p , prf} disj a∈m2
-    with x ≟ a
-  ...| yes a≡x rewrite a≡x = ⊥-elim (p1 disj a∈m2)
-  ...| no  a≢x = there (union-ext-2 (p2 disj) a∈m2)
-
-  union-elim-2 : {B : Set}{a : A}{m₁ m₂ : to1 B}(hip : disjoint (m₁ , m₂))
-               → a ∈ union m₁ m₂ hip → a ∉ m₂ → a ∈ m₁
-  union-elim-2 {m₁ = [] , unit} disj a∈mm a∉m2 = ⊥-elim (a∉m2 a∈mm)
-  union-elim-2 {a = a} {m₁ = (x , v) ∷ m , p , prf} disj a∈mm a∉m2 
-    with a ≟ x
-  ...| yes a≡x = here a≡x
-  ...| no  a≢x = there (union-elim-2 (p2 disj) (tail a≢x a∈mm) a∉m2)
-  
-  disjoint-insert : {B : Set}{a : A}{b : B}(m₁ m₂ : to1 B)(prf : disjoint (m₁ , m₂))
-                  → a ∉ union m₁ m₂ prf → disjoint (insert a b m₁ , m₂)
-  disjoint-insert {a = a} ([] , unit) m2 disj hip = p2 (¬union-uni-2 {m₂ = m2} a disj hip) , unit
-  disjoint-insert {a = a} ((x , v) ∷ m , p , prf) m2 disj hip
-    with a ≟ x
-  ...| no  a≢x = (p1 disj) , (disjoint-insert (m , prf) m2 (p2 disj) (hip ∘ there))
-  ...| yes a≡x = ⊥-elim (hip (here a≡x))
-
-  disjoint-remove : {B : Set}{a : A}(m₁ m₂ : to1 B)
-                  → disjoint (m₁ , m₂) → disjoint (m₁ , remove a m₂)
-  disjoint-remove ([] , unit) m2 disj = unit
-  disjoint-remove {a = a} ((x , v) ∷ m , p , prf) m2 disj 
-    = remove-lemma m2 (p1 disj) , disjoint-remove (m , prf) m2 (p2 disj)
- 
-  ----------------------------------
-  -- Dividing and Merging of maps --
-  ----------------------------------
-
-
-  focus : {B : Set} → A → to1 B → Σ (to1 B × to1 B) disjoint
-  focus a m with lift m a
-  ...| nothing = (([] , unit) , m) , unit
-  ...| just b  = ((((a , b) ∷ [] , (λ ()) , unit) , remove a m)
-                 , remove-correct m , unit
-                 )
-
-  focus-step : {B : Set} → A → Σ (to1 B × to1 B) disjoint → Σ (to1 B × to1 B) disjoint
-  focus-step a ((focus , rest) , disj) with lift-prf rest a
-  ...| nothing = ((focus , rest) , disj)
-  ...| just (b , a∈rest)  
-               = (insert a b focus , remove a rest) 
-               , disjoint-insert focus (remove a rest) (disjoint-remove focus rest disj) 
-                  (λ x → disjoint-choose-2 disj a∈rest (lemma (disjoint-remove focus rest disj) x (remove-correct rest)))
-    where
-      lemma : {B : Set}{a : A}{m₁ m₂ : to1 B}(hip : disjoint (m₁ , m₂))
-            → a ∈ union m₁ m₂ hip
-            → a ∉ m₂
-            → a ∈ m₁
-      lemma {a = a} hip a∈mm a∉m2 = [ id , (⊥-elim ∘ a∉m2) ]′ (union-uni a hip a∈mm)
-
-  focus* : {B : Set} → List A → to1 B → Σ (to1 B × to1 B) disjoint
-  focus* {B} l m = foldr focus-step ((([] , unit) , m) , unit) l
-
-  ---------------------------
-  -- A Few Generalizations --
-  ---------------------------
-
-  disjoint3 : {B : Set} → to1 B → to1 B → to1 B → Set
-  disjoint3 m1 m2 m3
-    = Σ (disjoint (m2 , m3)) (λ p → disjoint (m1 , union m2 m3 p))
-
-  union3 : {B : Set}(m1 m2 m3 : to1 B) → disjoint3 m1 m2 m3 → to1 B
-  union3 m1 m2 m3 (p23 , p123) = union m1 (union m2 m3 p23) p123
