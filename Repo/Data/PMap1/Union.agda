@@ -26,7 +26,15 @@ module Repo.Data.PMap1.Union (A : Set){{eqA : Eq A}} where
   disjoint (([] , unit)             , n) 
     = Unit
   disjoint (((x , v) ∷ m , p , prf) , n)
-    = x ∉ n × disjoint ((m , prf) , n)  
+    = x ∉ n × disjoint ((m , prf) , n)
+
+  disjoint-proof-irrel : {B : Set}{m₁ m₂ : to1 B}
+                       → (d1 d2 : disjoint (m₁ , m₂))
+                       → d1 ≡ d2
+  disjoint-proof-irrel {m₁ = [] , unit} unit unit
+    = refl
+  disjoint-proof-irrel {m₁ = (x , v) ∷ m₁ , p , prf} (d11 , d12) (d21 , d22)
+    = cong₂ _,_ (fun-ext (λ k → ⊥-elim (d11 k))) (disjoint-proof-irrel d12 d22)
 
   -- If two maps are disjoint, and m is an element of the second,
   -- then it is not in the first!
@@ -216,30 +224,60 @@ module Repo.Data.PMap1.Union (A : Set){{eqA : Eq A}} where
   union-disjoint-2 ((k , v) ∷ m1 , p , prf) m2 m3 d12 d3 
     = union-disjoint-2 (m1 , prf) m2 m3 (p2 d12) (p2 d3)
 
+  union-disjoint-1 : {B : Set}(m₁ m₂ m₃ : to1 B)(disj₁₂ : disjoint (m₁ , m₂))
+                   → (disj₃ : disjoint (union m₁ m₂ disj₁₂ , m₃))
+                   → disjoint (m₁ , m₃)
+  union-disjoint-1 ([] , unit) m2 m3 d12 d3 = unit
+  union-disjoint-1 ((x , v) ∷ m1 , p , prf) m2 m3 d12 d3 = p1 d3 , union-disjoint-1 (m1 , prf) m2 m3 (p2 d12) (p2 d3)
+
+  disjoint-union-1 : {B : Set}{m₁ m₂ m₃ : to1 B}
+                   → (d12 : disjoint (m₁ , m₂))
+                   → (d23 : disjoint (m₂ , m₃))
+                   → (d13 : disjoint (m₁ , m₃))
+                   → disjoint (m₁ , union m₂ m₃ d23)
+  disjoint-union-1 {m₁ = ([] , unit)} d12 d23 d13 = unit
+  disjoint-union-1 {m₁ = ((x , v) ∷ m1 , p , prf)} {m₂} {m₃} d12 d23 d13 
+    with disjoint-union-1 {m₁ = (m1 , prf)} (p2 d12) d23 (p2 d13)
+  ...| r = (¬union-uni x d23 (p1 d12) (p1 d13)) , r
+
+  disjoint-union-2 : {B : Set}{m₁ m₂ m₃ : to1 B}
+                   → (d12 : disjoint (m₁ , m₂))
+                   → (d23 : disjoint (m₂ , m₃))
+                   → (d13 : disjoint (m₁ , m₃))
+                   → disjoint (union m₁ m₂ d12 , m₃)
+  disjoint-union-2 {m₁ = m₁} {m₂} {m₃} d12 d23 d13 
+    = disjoint-comm (disjoint-union-1 (disjoint-comm d13) d12 (disjoint-comm d23))
+
+  {-
+  TODO:
+  This proof looks too complicated. 
+  Rewriting lemmas taking into account disjoint-proof-irrel
+  and noDups-mod-π₁-proof-irrel might help.
+
+  union-assoc : {B : Set}{m₁ m₂ m₃ : to1 B}
+              → (d12 : disjoint (m₁ , m₂))
+              → (d23 : disjoint (m₂ , m₃))
+              → (d13 : disjoint (m₁ , m₃))
+              → union m₁ (union m₂ m₃ d23) (disjoint-union-1 d12 d23 d13) 
+              ≡ union (union m₁ m₂ d12) m₃ (disjoint-union-2 d12 d23 d13)
+  union-assoc {m₁ = [] , unit} {m₂} {m₃} d12 d23 d13 
+    -- = subst (λ Z → lift (union m₂ m₃ d23) ≡ lift (union m₂ m₃ Z)) (disjoint-proof-irrel d23 (disjoint-union-2 d12 d23 d13)) refl
+    = {!!}
+  union-assoc {m₁ = (x , v) ∷ m₁ , p , prf} {m₂} {m₃} d12 d23 d13 
+    with (union-assoc {m₁ = (m₁ , prf)} (p2 d12) d23 (p2 d13)) 
+  ...| r = {!cong (x , v)!}
+
+  Still, this result is paramount to the augmentation lemma...
+  -}
+
   postulate
-    union-disjoint-1 : {B : Set}(m₁ m₂ m₃ : to1 B)(disj₁₂ : disjoint (m₁ , m₂))
-                 → (disj₃ : disjoint (union m₁ m₂ disj₁₂ , m₃))
-                 → disjoint (m₁ , m₃)
-
-    disjoint-union-1 : {B : Set}{m₁ m₂ m₃ : to1 B}
-                     → (d12 : disjoint (m₁ , m₂))
-                     → (d23 : disjoint (m₂ , m₃))
-                     → (d13 : disjoint (m₁ , m₃))
-                     → disjoint (m₁ , union m₂ m₃ d23)
-
-    disjoint-union-2 : {B : Set}{m₁ m₂ m₃ : to1 B}
-                     → (d12 : disjoint (m₁ , m₂))
-                     → (d23 : disjoint (m₂ , m₃))
-                     → (d13 : disjoint (m₁ , m₃))
-                     → disjoint (union m₁ m₂ d12 , m₃)
-    
-
     union-assoc : {B : Set}{m₁ m₂ m₃ : to1 B}
                 → (d12 : disjoint (m₁ , m₂))
                 → (d23 : disjoint (m₂ , m₃))
                 → (d13 : disjoint (m₁ , m₃))
                 → union m₁ (union m₂ m₃ d23) (disjoint-union-1 d12 d23 d13) 
                 ≈ union (union m₁ m₂ d12) m₃ (disjoint-union-2 d12 d23 d13)
+  
 
   -------------------------------
   -- Liftings and Disjointness --
