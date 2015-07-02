@@ -1,0 +1,398 @@
+\documentclass{llncs}
+\usepackage[utf8x]{inputenc}
+\usepackage[T1]{fontenc}
+
+\usepackage{url}
+\usepackage{float}
+\usepackage[usenames,dvipsnames]{color}
+\usepackage{enumerate}
+\usepackage{amsmath}
+%\usepackage{amsthm}
+\usepackage{amsfonts}
+\usepackage{amssymb}
+\usepackage{makeidx}
+\usepackage{parskip}
+\usepackage{multirow}
+\usepackage{moreverb}
+\usepackage{catchfilebetweentags}
+\usepackage{latex/agda}
+\usepackage{bussproofs}
+
+\newcommand{\D}[1]{\AgdaDatatype{#1}}
+\newcommand{\F}[1]{\AgdaFunction{#1}}
+\newcommand{\K}[1]{\AgdaKeyword{#1}}
+\newcommand{\N}[1]{\AgdaSymbol{#1}}
+\newcommand{\IC}[1]{\AgdaInductiveConstructor{#1}}
+\newcommand{\ICArgs}[2]{\AgdaInductiveConstructor{#1}$\; #2 $}
+\newcommand{\DArgs}[2]{\D{#1}$\; #2 $}
+
+\DeclareUnicodeCharacter {10627}{\{\hspace {-.2em}[}
+\DeclareUnicodeCharacter {10628}{]\hspace {-.2em}\}}
+\DeclareUnicodeCharacter {8759}{::}
+\DeclareUnicodeCharacter {8718}{$\square$}
+\DeclareUnicodeCharacter {8799}{$\stackrel{\tiny ? \vspace{-1mm}}{=}$}
+\DeclareUnicodeCharacter {8339}{$_x$}
+\DeclareUnicodeCharacter {8336}{$_a$}
+\DeclareUnicodeCharacter {7523}{$_r$}
+\DeclareUnicodeCharacter {7506}{$^\circ$}
+\DeclareUnicodeCharacter {8348}{$_t$}
+\DeclareUnicodeCharacter {7522}{$_i$}
+\DeclareUnicodeCharacter {9733}{$\star$}
+\DeclareUnicodeCharacter {119924}{$\mathcal{M}$}
+\DeclareUnicodeCharacter {8872}{$\vDash$}
+\DeclareUnicodeCharacter {9656}{$\blacktriangleright$}
+
+\title{Separation in Agda \\ \small{Theory of Programming and Types}}
+\author{Victor Cacciari Miraldo}
+\institute{University of Utrecht}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\newcommand{\Agda}[1]{\ExecuteMetaData[latex/Excerpts.tex]{#1}}
+\newcommand{\PMap}[1]{\ExecuteMetaData[latex/PMapParts.tex]{#1}}
+
+% \TODO: \citeSwierstra command!
+
+\newcommand{\citeSwierstra}{\cite{Swierstra2014} }
+\newcommand{\citeHoare}{\cite{Hoare69} }
+\newcommand{\Htriple}[3]{\{ #1 \} \; #2 \; \{ #3 \}}
+\newcommand{\fileid}{F_{id}}
+\newcommand{\BN}{\mathbb{N}}
+\newcommand{\MIM}{\mathcal{M}}
+%\newcommand{\iff}{\Leftrightarrow}
+
+
+\newcommand{\textSigma}{$\Sigma$}
+
+\section{Introduction}
+
+This document discusses the technicalities of proving \emph{separation} properties in Agda.
+Although it is very intuitive to be able to separate things from one another, we have faced
+subtle problems that led us to the development of domain specific data structures.
+
+Hoare Logic \citeHoare is a deduction calculus driven by a programming language structure,
+it allows one to reason on the lines of \emph{If we run the program $c$ at any state $s$
+satisfying $P\;s$, then the resulting state $s'$ is going to satisfy $Q \; s'$}. This is denoted
+by $\Htriple{P}{c}{Q}$. This calculus by itself already allows one to prove interesting
+results about a program. However, when concurrency gets into play, or whenever we need
+to explicitly divide our state in smaller parts (separation), we cannot express these properties anymore.
+
+Separation Logic, on the other hand, introduces a new type of operator, called \emph{separating conjunction}, which
+we denote by $\cdot \star \cdot$. For illustration purposes, we will define a toy language for 
+managing a folder with text files and a predicate language over it. 
+
+The project proposal mentioned an exploration of \emph{Concurrent Separation Logic} (CSL)
+soundness \cite{Vafeiadis2011} in Agda. CSL is an extension of \emph{Separation Logic} \cite{Hearn2001},
+targeted at handling the reasoning of concurrent reads and writes to a mutable state. As this
+was an experimental project, the end result is somewhat divergent from the original proposal.
+CSL soundness turned out to be too complicated to be proved in Agda, leading us to explore
+different aspects of \emph{Separation Logic}, mainly targeted at reasoning over \emph{version control systems},
+as in \citeSwierstra. 
+
+\section{Deliverable and Report Structure}
+
+The main deliverable that arose from this project is under 
+the \emph{data structure with guarantees} category. We developed a library
+for handling lists with no duplicate elements, which as later used to
+develop a library for handling \emph{separable} partial maps. 
+We used this partial map library to model a version control semantics similar
+to the one given in section 6 of \citeSwierstra.
+
+The full code is available on GitHub (\url{https://github.com/VictorCMiraldo/tpt-2015-project}).
+This repository also contains the some experimentations with CSL. The files which this report regards
+are:
+\begin{enumerate}[i)]
+  \item \texttt{\small Repo.Models.Abs2}, containing the repository model.
+  \item \texttt{\small Repo.Data}, where the modules \F{List1} and \F{PMap1} are.
+\end{enumerate}
+
+We start by briefly describing some technical details of both libraries, in section \ref{pmaps}. The discussion is then focused on the version control model, section \ref{repo}.
+A discussion on some design options is presented on section \ref{discussion}, which
+is then followed by our conclusions, in section \ref{conclusion}.
+
+\section{Partial Maps in Agda}
+\label{pmaps}
+
+Partial maps are an important ingredient for almost any discrete mathematical definition.
+Giving semantics to separation logic, concurrent or not, is not an exception. Therefore,
+we need to encode partial maps in Agda. A first option would be to use lists of pairs.
+This will fail, however, whenever we try to split a map in two disjoint parts, as Agda
+will tell us there might be duplicate elements.
+
+We created a library for handling lists with no duplicates, and therefore partial maps
+with no duplicates. Allowing us to divide such maps whenever we see fit. 
+There are a few ways to define such notion in Agda, but an inductive definition
+is by far the easier to handle, as this will drive the induction of almost every proof.
+
+\PMap{noDups-mod-def}
+
+It is worth mentioning that the \F{noDups-mod} predicate models \emph{no duplicates modulo predicate}. 
+In the partial map case, a \F{PMap1} is defined by:
+
+\PMap{pmap1-def}
+
+where $A$ is a module parameter for \texttt{\small Repo.Data.PMap1}, with decidable equality $eqA$. 
+Looking something in a map is pretty straight forward, but of paramount importance.
+
+\PMap{lkup-lift-def}
+
+The lifting of a partial map to a \F{Maybe} valued function is very useful. Since
+this function representation does not take order into account, we can define
+an equality relation modulo a permutation. This will be very useful for
+proving commutativity of union, for instance.
+
+\PMap{eq-modulo}
+
+It is trivial to prove that this is an equivalence relation, as transitivity and
+symmetry comes directly from $\_\equiv\_$. In order to provide a minimal working library,
+in the lines of Haskell's \texttt{\small Data.Map}, we need the following mutually
+recursive lemmas.
+
+\PMap{lemmas}
+
+\subsection{Defining Union}
+
+All this code was used mainly to able to model the \emph{set theoretical} 
+notion of partition, where a set $S$ can always be divided into two disjoint
+subsets $s_1$ and $s_2$ such that $s_1 \cup s_2 \equiv S$. In separation logic, 
+however, most of the times one defines the union of maps to be defined if and only if
+the parts are disjoint. We have a few different ways of expressing this disjointedness
+notion, the most handy one is by induction, again.
+
+\PMap{disjoint-def}
+
+It is useful to note that this notion is proof-irrelevant. Unfortunately we noticed
+this fact a bit late in the development of the library. This could greatly simplify
+a few proofs. This re-engineering is left as future work.
+
+\PMap{disjoint-pi-def}
+
+This allows us to give union notion and a (provable) way to separate
+a map in two disjoint parts, such that we can reconstruct it later with the
+previously mentioned union.
+
+\PMap{union-def}
+
+\PMap{focus-star-def}
+
+Without delving in too much implementation details, the library we developed
+consists in providing standard operations over \F{List1} and \F{PMap1} that
+preserve the \F{noDups-mod} and \F{disjoint} predicate. The code is available
+on GitHub, under \url{https://github.com/VictorCMiraldo/tpt-2015-project}.
+
+\section{Modeling a Folder}
+\label{repo}
+
+We modified the repository model given in \citeSwierstra, section 6. In order to provide more control
+over which \emph{parts} of a file were changed, we define a line to be a pair $\fileid \times \BN$,
+where $\fileid$ is an abstract file identifier (we assume we have decidable equality over $\fileid$)
+and the second projection represents the line in that file. 
+
+\Agda{file-defs}
+
+A repository, then, is:
+
+\Agda{repo-def}
+  
+where \F{FileMap.to1} $A$ denotes a partial map $\fileid \rightharpoonup A$.
+We chose to model lines as natural numbers. A line $n$ is followed by a line $m$
+if and only if $m = \F{suc }n$. In fact, we denote the first component of the
+product by \F{files}, and the second as \F{contents}.
+
+The predicate language we are going to use is minimal. It is easy to add and manipulate 
+propositional constructs using pre-condition strengthening and post-condition weakening.
+An important note, however, is that we did not model the $Empty$ predicate, but opted
+to use the \emph{repository does not have the file $f$}. The technicalities of this will be
+discussed later. Intuitively, though, it makes sense to be able to add a file to a folder,
+as long as there is no naming conflict. This design has the drawback to require,
+explicitly in the precondition, that the repository does not contain any of the files we
+are going to create. 
+
+\Agda{logic-def}
+
+Note that the \IC{Has} constructor receives two arguments instead of one, as in the
+original definition. The predicate (\IC{Has} f $n$) states not only the repository has a file, 
+but also that this file has \emph{at least} $n$ lines.
+
+\subsection{Giving it Semantics}
+
+The next step is to formalize which repositories satisfy which formulas. 
+Given a repository $m = (m_f , m_c) : \MIM$ and a formula $p : Logic$, we denote
+by $m \vDash p$ whenever $m$ satisfies $p$. Case $p$ is,
+
+\begin{align*}
+  (m_f , m_c) \vDash & \; (\IC{Hasnt}\; f) \\
+               \iff  & f \notin m_f \\[2mm]
+  (m_f , m_c) \vDash & \; (\IC{Has}\; f\; n) \\
+               \iff  & lkup\;f\;m_f \equiv just\; n' \wedge n \leq n'\\[2mm]
+  (m_f , m_c) \vDash & \; ((f , n)\; \IC{is}\; b) \\
+               \iff  & m_c (f , n) \equiv just\; b \\[2mm]
+  (m_f , m_c) \vDash & \; (p \star q) \\
+               \iff  & \exists k_1 , k_2\;\cdot\; k_1 \cup k_2 \approx m_f
+                       \wedge k_1 \cap k_2 \equiv \emptyset \\
+                     & \wedge (k_1 , m_c) \vDash p
+                       \wedge (k_2 , m_c) \vDash q
+\end{align*}
+
+The first three lines are intuitive. The last one introduces the first subtlety in the
+encoding of separation in Agda. When we state that $k_1 \cup k_2 \approx m_f$, we
+assume that order is not important. In Agda, however, propositional equality
+of lists takes ordering into account. This is where the equality modulo permutation
+fixes our problem.
+
+One interesting result we were able to prove, is that adding \emph{irrelevant}
+information to the model does not change the validity of a formula. We call this
+the \emph{augmentation} lemma.
+
+\Agda{augmentation-lemma}
+
+This lemma allows us to justify a $\star$-elimination rule, that is,
+$p \star q \Rightarrow p$ and $p \star q \Rightarrow q$. The proof is
+simple classically, once we have the augmentation lemma. 
+Let sketch the proof of the first elimination rule for illustration
+purposes: assuming a model $(m_f , m_c) \vDash p \star q$, then
+there exists a partition of $m_f$, let's call it $k_1$ and $k_2$.
+We know that $(k_1 , m_c) \vDash p$ and we need to prove that
+$(k_1 \cup k_2 , m_c) \vDash p$. The fact that $k_1 \cap k_2 = \emptyset$
+and the augmentation lemma concludes the proof.
+
+Note that if we provided the $Empty$ predicate in our assertion language, we
+would not be able to prove this lemma for all formulas, if $(m_f , m_c) \vDash Empty$,
+then $dom\; m_f \equiv []$, and we would need to prove that $dom\;(m_f \cup k) \equiv []$, which
+is clearly absurd.
+
+We have a few pros and cons of using this design. It is very handy to be able
+to \emph{garbage collect} terms in formulas, making proof-trees much more readable by
+a human. The downside being the need to begin the proof asserting that the repository
+does not have the files we seed to add in the given patch.
+
+A noteworthy remark is that our repository model is close to the model for Concurrent
+Separation Logic given by Vafeiadis in \cite{Vafeiadis2011}, that is, the product
+of a partial map and a function. The separation-related properties of CSL
+only separate the partial map of the model, which is why we also don't require any change to
+the \F{contents} of the repository in the augmentation lemma. 
+
+\subsection{Derivations}
+
+After providing a formal semantics for repositories and assertions over them, we should
+introduce our language for managing a repository and state how should we reason about it,
+in a derivational style.
+
+\Agda{repo-language-def}
+
+The commands are pretty straight-forward. In figure \ref{calculus} we give the proof rules for our language. 
+The soundness proof is left as future work, as it should hold, at least intuitively.
+As a simple illustration, let us consider the following patch:
+
+\Agda{repo-1}
+
+If we apply this patch to a repository that has no file named $0$ or $1$, the end result
+will contain both files, empty. The proof type is presented below but the proof is omitted
+here.
+
+\Agda{proof-repo-1}
+
+\newcommand{\prooflbl}[1]{\RightLabel{\scriptsize{(#1)}}}
+
+\begin{figure}[h]
+\begin{minipage}[t]{0.55\textwidth}
+  \begin{prooftree}
+    \AxiomC{}
+    \prooflbl{touch}
+    \UnaryInfC{\Htriple{$Hasnt\;f$}{touch f}{$Has\;f\;0$}}
+  \end{prooftree} \vspace{2mm}
+  \begin{prooftree}
+    \AxiomC{}
+    \prooflbl{rm}
+    \UnaryInfC{\Htriple{$Has\;f\;0$}{rmfile f}{$Hasnt\;f$}}
+  \end{prooftree}
+\end{minipage}
+\begin{minipage}[t]{0.45\textwidth}
+  \begin{prooftree}
+    \AxiomC{$\Htriple{P}{c}{Q}$}
+    \AxiomC{$isFrame\;S\;c$}
+    \prooflbl{frame}
+    \BinaryInfC{$\Htriple{P * S}{c}{Q * S}$}
+  \end{prooftree} \vspace{2mm}
+  \begin{prooftree}
+    \AxiomC{\Htriple{$P$}{c}{$S$}}
+    \AxiomC{\Htriple{$S$}{d}{$Q$}}
+    \prooflbl{seq}
+    \BinaryInfC{\Htriple{$P$}{$c \blacktriangleright d$}{$Q$}}
+  \end{prooftree}
+\end{minipage}
+\vspace{2mm}
+\begin{prooftree}
+    \AxiomC{}
+    \prooflbl{ins}
+    \UnaryInfC{\Htriple{$Has\;f\;n$}{insert (f , n) bs}
+                       {$Has\;f\;(suc\;n) \wedge (f, n)\;is\;bs$}}
+  \end{prooftree}
+  \vspace{2mm}
+\begin{prooftree}
+    \AxiomC{}
+    \prooflbl{rep}
+    \UnaryInfC{\Htriple{$Has\;f\;n \wedge (f , n)\;is\;bs$}
+                       {replace (f , n) bs bs'}
+                       {$Has\;f\;n \wedge (f, n)\;is\;bs'$}}
+\end{prooftree}
+\vspace{2mm}
+\begin{prooftree}
+    \AxiomC{$P \Rightarrow P'$}
+    \AxiomC{\Htriple{$P'$}{c}{$Q'$}}
+    \AxiomC{$Q \Rightarrow Q'$}
+    \prooflbl{refine}
+    \TrinaryInfC{\Htriple{$P$}{c}{$Q$}}
+  \end{prooftree}
+\caption{Proof rules of the repository language}
+\label{calculus}
+\end{figure}
+
+\section{Design Options}
+\label{discussion}
+
+We could have opted for a different design in multiple parts of this project. One
+important remark is why we did not use \F{Setoid} from the standard library to model
+our partial map's equality. The reason for that is the convenience of substitutivity.
+If we have propositionally equal lifts, we can \K{rewrite} between them.
+
+Another design detail can be seen in the side condition for the frame rule, in figure \ref{calculus}.
+We specify a predicate \F{isFrame}, which, given a formula and a comment returns the \F{Set}
+stating that the given formula addresses do not overlap the addresses referenced in the command.
+This is easier then stating $addr\;R \cap mod\;c \equiv \emptyset$, as proving inductively defined
+properties is easier, and this also allows for a more refined control of what
+overlapping addresses actually means. The \F{isFrame} predicate is defined below. 
+
+\Agda{addr-def}
+\Agda{isFrame-def}
+
+\section{Conclusions}
+\label{conclusion}
+
+During this project we identified the possible pitfalls one might fall for
+when trying to prove separation properties in Agda. Although very intuitive,
+we could see how this intuition fails us when we move to a constructive world.
+
+The libraries for handling partial maps and lists with no duplicate elements
+are easier to use than we thought they would be, once we fixed the equality question.
+Their implementation, however, is a bit tricky. The full code is about 1 thousand lines
+of Agda. It is true that a proper re-engineering of properties could be made, as we believe
+that there are multiple proofs that can be written as implications of previously proved
+lemmas.
+
+Unfortunately, we had no time to deeply investigate how our changes to the repository
+model affect the overall problems described in \citeSwierstra. Nor could we finish
+handling branching and merging. This is left as future work.
+
+The Agda formalization of our repository model makes extensive use of our libraries,
+and still have a few (inexplicable) \emph{unsolved metas}. Specially in the proof of the
+augmentation lemma. Yet, a pen and paper proof shows us that the lemma really holds,
+now it is a matter of explaining it to Agda. 
+
+
+\bibliographystyle{alpha}
+\bibliography{references} 
+
+\end{document}
